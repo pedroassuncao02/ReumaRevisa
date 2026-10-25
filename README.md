@@ -3,7 +3,7 @@
 Aplicação web em português para transformar questões comentadas em objetivos de aprendizagem, curar notas simples/cloze e estudar com FSRS real. Aplicação pessoal para uso local ou no GitHub Codespaces, com banco SQLite persistente. Sem dados demonstrativos no acervo inicial.
 ## Versão completa e modo manual sem API
 
-A aplicação principal é servida pelo Node.js em computador ou GitHub Codespaces. Ela inclui banco SQLite, curadoria, deduplicação, FSRS, estatísticas, backups e exportação Anki. O modo manual prepara pedidos para o ChatGPT; você cola a resposta JSON e faz uma avaliação independente antes de aprovar. Não exige chave nem chamadas pagas à API. A pasta [static-site](static-site/) é uma alternativa simplificada para GitHub Pages e não substitui a aplicação completa.
+A aplicação principal é servida pelo Node.js em computador ou GitHub Codespaces. Ela inclui banco SQLite, curadoria, deduplicação, FSRS, estatísticas, backups e exportação Anki. O modo manual separa o fluxo em etapas: o ChatGPT identifica objetivos e compara com todo o acervo antes de redigir; você importa a análise, pede a redação de cada objetivo distinto e solicita uma avaliação independente antes da aprovação. Não exige chave nem chamadas pagas à API. A pasta [static-site](static-site/) é uma alternativa simplificada para GitHub Pages e não substitui a aplicação completa.
 
 ## Executar
 
@@ -19,7 +19,7 @@ Copie `.env.example` para `.env`. Por padrão, `OPENAI_AUTOMATIC_ENABLED=false`,
 npm start
 ```
 
-Abra **http://127.0.0.1:3210**. O servidor escuta apenas em `127.0.0.1` no computador ou na porta privada do Codespaces. Envie a questão; quando ficar pendente, abra-a, copie o pedido para o ChatGPT, cole o JSON e importe. Avalie cada rascunho separadamente com o pedido de revisão antes de aprová-lo. Nenhum envio chama a API por padrão.
+Abra **http://127.0.0.1:3210**. O servidor escuta apenas em `127.0.0.1` no computador ou na porta privada do Codespaces. Envie a questão; quando ficar pendente, abra-a e copie o pedido de análise de objetivos. Importe essa comparação primeiro. Só propostas distintas liberam um pedido individual de redação; depois, avalie cada rascunho separadamente antes de aprová-lo. Nenhum envio chama a API por padrão.
 
 No Windows, para copiar a configuração: `Copy-Item .env.example .env`. Para encerrar: Ctrl+C. Para reiniciar, execute `npm start` novamente. Os dados continuam em `data/reuma.sqlite`; não apague essa pasta para atualizar o código.
 
@@ -35,7 +35,7 @@ Nesta entrega, as dependências já estão instaladas no projeto local. O ZIP co
 6. **Curar:** revise evidência, objetivo, termo oculto, alertas e semelhantes. Edite, converta, selecione outro termo, descarte com motivo, vincule ou aprove. Cartões com alertas não podem ser aprovados em lote. A aprovação individual com alertas exige justificativa explícita; sintaxe essencial inválida e evidência ausente não são liberadas por justificativa.
 7. **Estudar:** somente aprovados entram na fila. Revele a resposta, avalie e receba novo agendamento pela biblioteca. Desfazer preserva o evento auditável e o exclui das métricas.
 
-Sem cobrança automática, a análise inicial e a avaliação independente acontecem no ChatGPT por copiar e colar. A aplicação valida a estrutura e a evidência antes da curadoria; comparação semântica manual depende da qualidade da revisão e da confirmação humana.
+Sem cobrança automática, a identificação de objetivos, a redação individual dos cartões e a avaliação independente acontecem no ChatGPT por copiar e colar, em etapas separadas. A redação só começa depois da comparação prévia com o acervo completo. A aplicação valida a estrutura e a evidência antes da curadoria; comparação semântica manual depende da qualidade da revisão e da confirmação humana.
 
 ## O que foi implementado
 
@@ -107,7 +107,7 @@ npm test
 npm run check
 ```
 
-Suíte com testes de fluxo no serviço e HTTP: geração com provedor controlado, edição, aprovação, FSRS, duplicatas/paráfrases, concorrência, cloze, suporte literal, denominadores, fuso, desfazer, backup, persistência, exportação e união reversível. `.github/workflows/tests.yml` executa os testes no GitHub Actions.
+Suíte com testes de fluxo no serviço e HTTP: comparação manual antes da redação, reutilização de objetivo existente, validação de evidência, avaliação independente, geração com provedor controlado, edição, aprovação, FSRS, duplicatas/paráfrases, concorrência, cloze, estatísticas, desfazer, backup, persistência e exportação. `.github/workflows/tests.yml` executa os testes no GitHub Actions.
 
 Veja [docs/QUALIDADE.md](docs/QUALIDADE.md) para separar testes determinísticos de avaliações do modelo e [docs/ACEITE.md](docs/ACEITE.md) para a matriz de verificação.
 

@@ -42,38 +42,65 @@ export class Service {
 
  async manualImport(qid,response){return this.serialize(async()=>{
   const q=this.s.get('questions',qid);assert(q,'Questão não encontrada.',404);
-  assert(q.status==='pending','Somente questões pendentes podem receber uma análise manual.');
+  assert(q.status==='pending','Somente questões pendentes podem receber a análise de objetivos.');
   assert(typeof response==='string'&&response.trim().length>0&&response.length<=300000,'Cole a resposta JSON completa do ChatGPT.');
   let parsed;try{const clean=response.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');parsed=JSON.parse(clean);}catch{throw new Error('Não encontrei um JSON válido. Peça ao ChatGPT para retornar somente o objeto JSON indicado.');}
   assert(parsed&&typeof parsed==='object'&&!Array.isArray(parsed),'A resposta deve ser um objeto JSON.');
-  assert(Array.isArray(parsed.candidates)&&parsed.candidates.length<=30,'O JSON deve conter uma lista "candidates" com até 30 propostas. Lista vazia é válida.');
+  assert(Array.isArray(parsed.candidates)&&parsed.candidates.length<=30,'O JSON deve conter uma lista "candidates" com até 30 objetivos. Lista vazia é válida.');
   assert(parsed.issues===undefined||(Array.isArray(parsed.issues)&&parsed.issues.length<=100&&parsed.issues.every(x=>typeof x==='string')),'A lista de pendências é inválida.');
-  const areas=this.s.meta('areas');
-  const prepared=parsed.candidates.map((candidate,index)=>{
-   assert(candidate&&candidate.objective&&candidate.note,'Cada proposta precisa conter objective e note.');
-   const objective={...candidate.objective,id:id(),questionId:qid,createdAt:now(),warnings:[]};
-   objective.warnings=validateObjective(objective,q.raw,areas);
-   const key=objectiveKey(objective),noteData=candidate.note;
-   const note={...noteData,id:id(),objectiveId:objective.id,objectiveKey:key,status:'draft',area:objective.area,tags:objective.tags,evidence:objective.evidence,source:q.source,createdAt:now(),updatedAt:now(),alerts:[],matches:[],evaluation:null,distinction:'',dedupComplete:false,manualImport:true,verifiedAt:null};
-   const validation=validateNote(note,objective,q.raw);
-   note.alerts=[...new Set([...(parsed.issues||[]).map(x=>String(x).slice(0,2000)),...validation,'Comparação semântica e avaliação independente pendentes. Use "Revisar com ChatGPT".'])];
-   return {objective,note,index};
-  });
+  const areas=this.s.meta('areas'),prepared=[],allNotes=this.s.all('notes');let covered=0,updates=0;const batchKeys=new Set();
+  for(const item of parsed.candidates){
+   assert(item&&item.objective&&['distinct','same','improve','partial','conflict','uncertain'].includes(item.decision),'Cada objetivo precisa de uma decisão de comparação válida.');
+   assert(Array.isArray(item.matches)&&item.matches.length<=100,'Lista de cartões semelhantes inválida.');
+   assert(item.matches.every(m=>m&&typeof m.id==='string'&&this.s.get('notes',m.id)&&['same','improve','partial','conflict','uncertain'].includes(m.decision)&&typeof (m.distinction||'')==='string'),'A comparação cita cartão inexistente ou decisão inválida.');
+   const objective={...item.objective,id:id(),questionId:qid,createdAt:now(),warnings:[]};objective.warnings=validateObjective(objective,q.raw,areas);
+   const key=objectiveKey(objective),exact=allNotes.find(n=>n.objectiveKey===key),seen=batchKeys.has(key);batchKeys.add(key);
+   let decision=exact?'same':item.decision,matches=item.matches.map(m=>({...m,distinction:String(m.distinction||'').slice(0,2000)}));
+   if(exact&&!matches.some(m=>m.id===exact.id))matches=[{id:exact.id,decision:'same',distinction:''},...matches];
+   if(seen){decision='uncertain';item.issues=[...(item.issues||[]),'Objetivo repetido em outra proposta deste mesmo envio.'];}
+   const target=matches.find(m=>m.decision==='same');
+   const evidenceValid=!objective.warnings.some(w=>w.includes('evidência'));
+   let status='held',why='';
+   if(decision==='same'){
+    if(target){status='covered';covered++;}
+    else{decision='uncertain';why='A proposta marcou conhecimento já coberto, mas não identificou um cartão correspondente no acervo.';}
+   }else if(decision==='improve'){status='update';updates++;why='Melhoria sugerida; revise o cartão existente sem criar outro.';}
+   else if(decision==='distinct'&&matches.length===0&&evidenceValid){status='ready';}
+   else if(decision==='partial'&&String(item.distinction||'').trim()&&evidenceValid&&!matches.some(m=>['same','improve','conflict','uncertain'].includes(m.decision))){status='ready';}
+   else if(decision==='partial')why='Sobreposição parcial sem distinção clara, correspondência segura ou evidência suficiente.';
+   else if(decision==='conflict')why='Conflito com o acervo; nenhuma nota concorrente foi criada.';
+   else if(decision==='uncertain')why='Comparação incerta; nenhuma nota foi criada.';
+   else why='A proposta encontrou possíveis correspondências sem justificar a novidade.';
+   if(!evidenceValid)why='A evidência não foi encontrada literalmente na questão; não é possível gerar cartão.';
+   const candidate={id:id(),objectiveId:objective.id,objective,decision,matches,distinction:String(item.distinction||'').slice(0,2000),issues:Array.isArray(item.issues)?item.issues.filter(x=>typeof x==='string').map(x=>x.slice(0,1000)):[],status,why,createdAt:now(),noteId:null};
+   objective.decision=decision;if(target)objective.existingNoteId=target.id;
+   prepared.push(candidate);
+  }
   return this.s.tx(()=>{
-   let created=0,covered=0;
-   for(const item of prepared){
-    const existing=this.s.all('notes').find(n=>n.objectiveKey===item.note.objectiveKey);
-    item.objective.decision=existing?'same':'manual_pending';
-    if(existing)item.objective.existingNoteId=existing.id;
-    this.s.put('objectives',item.objective,{question_id:qid});
-    if(existing){this.s.link(qid,existing.id,item.objective.evidence);covered++;continue;}
-    this.s.put('notes',item.note,{objective_id:item.objective.id,objective_key:item.note.objectiveKey});
-    this.s.link(qid,item.note.id,item.objective.evidence);created++;
-   }
-   q.status='ready';q.analysisMode='manual-chatgpt';q.issues=(parsed.issues||[]).map(x=>String(x).slice(0,2000));
-   q.summary={objectives:prepared.length,created,covered,updates:0};q.manualSummary=String(parsed.summary||'').slice(0,2000);this.s.update('questions',q);
-   return {question:q,created,covered};
+   for(const candidate of prepared){this.s.put('objectives',candidate.objective,{question_id:qid});if(candidate.status==='covered'){const target=candidate.matches.find(m=>m.decision==='same');if(target)this.s.link(qid,target.id,candidate.objective.evidence);}}
+   const globalIssues=(parsed.issues||[]).map(x=>String(x).slice(0,2000));
+   q.status='ready';q.analysisMode='manual-chatgpt';q.issues=globalIssues;
+   q.manualSummary=String(parsed.summary||'').slice(0,2000);q.manualCandidates=prepared;
+   q.manualUpdates=prepared.filter(x=>x.status==='update').map(x=>({objectiveId:x.objectiveId,matches:x.matches,distinction:x.distinction,issues:x.issues}));
+   q.summary={objectives:prepared.length,created:0,covered,updates,pending:prepared.filter(x=>x.status==='held').length};this.s.update('questions',q);
+   return {question:q,created:0,covered,updates,ready:prepared.filter(x=>x.status==='ready').length,pending:q.summary.pending};
   });
+ });}
+ async manualNote(qid,cid,response){return this.serialize(async()=>{
+  const q=this.s.get('questions',qid);assert(q&&q.analysisMode==='manual-chatgpt','Questão sem análise manual.',404);
+  const candidates=Array.isArray(q.manualCandidates)?q.manualCandidates:[],candidate=candidates.find(x=>x.id===cid);
+  assert(candidate&&candidate.status==='ready','Este objetivo não está liberado para geração de cartão.',404);
+  const exact=this.s.all('notes').find(n=>n.objectiveKey===objectiveKey(candidate.objective));if(exact){this.s.tx(()=>{candidate.status='covered';candidate.matches=[{id:exact.id,decision:'same',distinction:''},...candidate.matches];candidate.why='O mesmo objetivo entrou no acervo antes da redação; proposta vinculada sem criar outra nota.';q.manualCandidates=candidates;q.summary.covered=(q.summary.covered||0)+1;q.summary.pending=Math.max(0,(q.summary.pending||0)-1);this.s.link(qid,exact.id,candidate.objective.evidence);this.s.update('questions',q);});return {covered:true,note:exact,question:q};}
+  assert(typeof response==='string'&&response.trim().length>0&&response.length<=100000,'Cole a resposta JSON do cartão.');
+  let parsed;try{const clean=response.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');parsed=JSON.parse(clean);}catch{throw new Error('Não encontrei um JSON válido para o cartão.');}
+  assert(parsed&&typeof parsed==='object'&&!Array.isArray(parsed),'A resposta deve ser um objeto JSON.');
+  if(parsed.hold===true){candidate.status='held';candidate.why=String(parsed.reason||'A rechecagem identificou uma possível redundância ou incerteza.').slice(0,2000);candidate.matches=Array.isArray(parsed.matches)?parsed.matches.filter(m=>m&&this.s.get('notes',m.id)).slice(0,100):candidate.matches;candidate.issues.push(candidate.why);q.manualCandidates=candidates;q.summary.pending=(q.summary.pending||0)+1;this.s.update('questions',q);return {held:true,question:q};}
+  const noteData={type:parsed.type,front:parsed.front,back:parsed.back,explanation:parsed.explanation};
+  assert(['basic','cloze'].includes(noteData.type)&&typeof noteData.front==='string'&&typeof noteData.back==='string'&&typeof noteData.explanation==='string','Retorne type, front, back e explanation válidos.');
+  const o=candidate.objective,key=objectiveKey(o),validation=validateNote(noteData,o,q.raw);
+  const note={...noteData,id:id(),objectiveId:o.id,objectiveKey:key,status:'draft',area:o.area,tags:o.tags,evidence:o.evidence,source:q.source,createdAt:now(),updatedAt:now(),alerts:[...new Set([...candidate.issues,...validation,'Avaliação independente pendente. Use "Revisar com ChatGPT".'])],matches:candidate.matches,evaluation:null,distinction:candidate.distinction,dedupComplete:false,manualImport:true,verifiedAt:null};
+  this.s.tx(()=>{this.s.put('notes',note,{objective_id:o.id,objective_key:key});this.s.link(qid,note.id,o.evidence);candidate.status='generated';candidate.noteId=note.id;q.manualCandidates=candidates;q.summary.created=(q.summary.created||0)+1;this.s.update('questions',q);});
+  return {note,question:q};
  });}
  manualReview(nid,response){
   const n=this.s.get('notes',nid);assert(n&&n.status==='draft','Somente rascunhos podem receber avaliação manual.',404);

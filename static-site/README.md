@@ -1,5 +1,7 @@
 # Reuma Revisa sem API
 
+> Esta é uma versão simplificada do site estático. Ela não implementa FSRS real, estatísticas completas ou o fluxo de curadoria integral do prompt. Para usar a aplicação completa com FSRS e curadoria rigorosa, abra [o repositório no GitHub](https://github.com/pedroassuncao02/ReumaRevisa) e inicie um Codespace na branch main (Code → Codespaces → Create codespace on main). O modo manual da versão completa não usa créditos da API.
+
 Versão estática para publicar no GitHub Pages. Não usa chave de API nem servidor próprio. O fluxo de IA é manual: copie o pedido preparado pelo app, cole no ChatGPT e depois cole a resposta JSON no app para importar os cartões.
 
 ## Dados e privacidade
@@ -24,4 +26,3 @@ No GitHub Free, o GitHub Pages exige um repositório público. O código da pág
 5. Use **Backup e dados** para baixar um backup JSON ou exportar TSV para Anki.
 
 O app importa JSON no formato mostrado no pedido. Para a análise ser válida, confira sempre a evidência citada e o conteúdo dos cartões antes de aprová-los.
-

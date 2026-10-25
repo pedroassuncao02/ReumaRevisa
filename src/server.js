@@ -31,6 +31,7 @@ export function makeApp({store,ai,dataDir=resolve(root,process.env.DATA_DIR||'da
    }
    if(path.startsWith('/api/jobs/')&&req.method==='GET'){const j=s.get('jobs',path.split('/').pop());assert(j,'Processamento não encontrado.',404);return send(j);}
    if(path==='/api/manual-import'&&req.method==='POST')return send(await service.manualImport(body.id,body.response));
+   if(path==='/api/manual-note'&&req.method==='POST')return send(await service.manualNote(body.id,body.candidateId,body.response));
    if(path==='/api/manual-review'&&req.method==='POST')return send(service.manualReview(body.id,body.response));
    if(path==='/api/analyze'&&req.method==='POST')return send(await service.serialize(()=>service.analyze(body.id)));
    if(path==='/api/attempt'&&req.method==='POST')return send(service.attempt(body.id,body.outcome));
