@@ -17,7 +17,10 @@ export function makeApp({store,ai,dataDir=resolve(root,process.env.DATA_DIR||'da
   res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
   function send(value,status=200,type='application/json; charset=utf-8'){res.writeHead(status,{'Content-Type':type});res.end(type.startsWith('application/json')?JSON.stringify(value):value);}
   try{
-   assert(/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(req.headers.host||''),'Acesso permitido somente por localhost.',403);
+      const requestHost=req.headers.host||'';
+   const localHost=/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(requestHost);
+   const codespacesHost=process.env.CODESPACES==='true'&&/^[-a-z0-9]+-3210\.(?:app\.github\.dev|githubpreview\.dev)$/i.test(requestHost);
+   assert(localHost||codespacesHost,'Acesso permitido somente por localhost ou pelo Codespace privado.',403);
    if(req.method==='GET'&&!path.startsWith('/api/')){const files={'/':'index.html','/app.js':'app.js','/style.css':'style.css'};assert(files[path],'Página não encontrada.',404);return send(readFileSync(join(root,'public',files[path])),200,path.endsWith('.js')?'text/javascript':path.endsWith('.css')?'text/css':'text/html; charset=utf-8');}
    let body={};if(req.method!=='GET'){assert(req.headers['x-csrf-token']===token,'Sessão expirada. Atualize a página.',403);assert(!req.headers.origin||req.headers.origin===`http://${req.headers.host}`,'Origem não permitida.',403);let chunks='',size=0;for await(const c of req){size+=c.length;assert(size<25*1024*1024,'Arquivo muito grande.');chunks+=c;}try{body=chunks?JSON.parse(chunks):{};}catch{assert(false,'JSON inválido.');}}
    if(path==='/api/state'&&req.method==='GET')return send({token,ai:{enabled:service.ai.enabled,provider:'OpenAI',model:service.ai.model},areas:s.meta('areas'),settings:s.meta('settings'),questions:s.all('questions'),notes:s.all('notes'),objectives:s.all('objectives'),links:s.all('links'),reports:s.all('reports'),versions:s.all('versions'),merges:s.all('merges'),queue:service.queue(),stats:statistics(s)});
@@ -56,4 +59,6 @@ export function makeApp({store,ai,dataDir=resolve(root,process.env.DATA_DIR||'da
  }
  return {handler,store:s,service};
 }
-if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){const app=makeApp();const port=Number(process.env.PORT||3210);createServer(app.handler).listen(port,'127.0.0.1',()=>console.log(`Reuma Revisa: http://127.0.0.1:${port}`));}
+if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){const app=makeApp();const port=Number(process.env.PORT||3210);const host=process.env.CODESPACES==='true'?'0.0.0.0':'127.0.0.1';createServer(app.handler).listen(port,host,()=>console.log(`Reuma Revisa disponível na porta ${port}`));}
+
+
