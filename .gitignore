@@ -1,0 +1,9 @@
+node_modules/
+data/
+.env
+backups/
+*.sqlite*
+*.log
+coverage/
+conteudos/*/
+!conteudos/README.md

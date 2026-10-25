@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { Store } from '../src/store.js';
+import { Service } from '../src/service.js';
+import { id,objectiveKey,fingerprint } from '../src/domain.js';
+import { createEmptyCard } from 'ts-fsrs';
+function prepare(){const s=new Store(':memory:');const svc=new Service(s,{});const notes=[];for(let i=0;i<2;i++){const q={id:id(),raw:'Questão fictícia número '+i,fingerprint:fingerprint('Questão fictícia número '+i)};s.put('questions',q,{fingerprint:q.fingerprint});const o={id:id(),questionId:q.id,entity:'Alfa',aspect:'exame',conditions:'Condição '+i,answer:'Alfa'};s.put('objectives',o,{question_id:q.id});const n={id:id(),objectiveId:o.id,objectiveKey:objectiveKey(o),status:'approved',front:'Exemplo '+i};s.put('notes',n,{objective_id:o.id,objective_key:n.objectiveKey});const c={id:id(),noteId:n.id,state:createEmptyCard(new Date()),revision:0};s.put('cards',c,{note_id:n.id});s.link(q.id,n.id,'Evidência '+i);notes.push(n);}return {s,svc,notes};}
+test('união mantém histórico escolhido, suspende outro e transfere vínculos sem apagar',()=>{const {s,svc,notes}=prepare(),before=s.all('cards');const merge=svc.merge(notes[0].id,notes[1].id,'Mesmo conhecimento, após revisão manual.');assert.equal(s.get('notes',notes[1].id).status,'suspended');assert.equal(s.all('links').length,3);assert.deepEqual(s.all('cards'),before);svc.undoMerge(merge.id);assert.equal(s.get('notes',notes[1].id).status,'approved');assert.equal(s.all('links').length,2);assert.deepEqual(s.all('cards'),before);});
+test('normalização reconhece alternativas em linha única e preserva valores clínicos',()=>{const a='1. Qual é a opção correta?\nA) 20 mg\nB) 40 mg\nComentário: texto';const b='2) Qual é a opção correta? (A) 20 mg (B) 40 mg\nGabarito: B';assert.equal(fingerprint(a),fingerprint(b));assert.notEqual(fingerprint(a),fingerprint(a.replace('20 mg','30 mg')));});
+test('valor decimal no início não é removido como numeração',()=>{assert.notEqual(fingerprint('20.5 mg é a dose descrita nesta pergunta?'),fingerprint('30.5 mg é a dose descrita nesta pergunta?'));});

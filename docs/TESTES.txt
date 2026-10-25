@@ -1,0 +1,36 @@
+✔ normalização ignora cabeçalho, rótulos, espaços e comentário mas preserva negação e valores (1.4664ms)
+✔ envio → objetivos → rascunho → edição → aprovação → FSRS real (20.7608ms)
+✔ reenvios não alteram questões, tentativas, cartões ou estatísticas (4.7811ms)
+✔ envios simultâneos ficam serializados e índice único protege persistência (1.4693ms)
+✔ mesmo objetivo reutiliza inclusive cartão suspenso sem duplicar (4.1669ms)
+✔ paráfrase semântica solicita confirmação e não grava antes dela (1.2393ms)
+✔ mesma doença com aspecto distinto e áreas diferentes gera notas distintas (1.5505ms)
+✔ zero objetivos é um resultado válido (0.9739ms)
+✔ oclusões longas, vazias, pistas e evidência ausente recebem alertas (0.3769ms)
+✔ termo técnico completo é exigido, orientação de extensão não trunca termos (0.4478ms)
+✔ avaliador independente rejeita ambiguidade após duas reescritas e impede lote (3.0363ms)
+✔ evidência inventada não pode ser aprovada mesmo com justificativa (1.7701ms)
+✔ avaliações duplicadas são idempotentes e versões antigas são rejeitadas (2.2874ms)
+✔ desfazer restaura agendamento e estatísticas preservando evento auditável (4.4363ms)
+✔ limite diário de novos considera eventos válidos e libera vaga ao desfazer (2.902ms)
+✔ percentuais separam tentativas, não respondidas, acertos com dúvida e eventos (4.6544ms)
+✔ backup recupera vínculos, histórico, agendamento e desfazer (5.7573ms)
+✔ backup inválido reverte transação sem apagar dados (2.8049ms)
+✔ dados persistem após fechar e reabrir SQLite (17.0169ms)
+✔ Anki mantém sintaxe cloze e identificadores estáveis sem histórico (2.0749ms)
+✔ sem IA não inventa cartões e mantém material pendente (0.8305ms)
+✔ schema rejeita tipos incorretos, campos inesperados e objetivos incompletos (0.3277ms)
+✔ mudança explícita de objetivo reinicia FSRS sem apagar revisões antigas (2.7842ms)
+✔ mudança para novo cartão mantém o antigo suspenso e histórico independente (2.4042ms)
+✔ HTTP serve interface, protege CSRF e aceita envio rastreável (52.4605ms)
+✔ união mantém histórico escolhido, suspende outro e transfere vínculos sem apagar (6.1496ms)
+✔ normalização reconhece alternativas em linha única e preserva valores clínicos (0.1989ms)
+✔ valor decimal no início não é removido como numeração (0.1314ms)
+ℹ tests 28
+ℹ suites 0
+ℹ pass 28
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 279.7633
