@@ -1,9 +1,9 @@
 # Reuma Revisa
 
 Aplicação web em português para transformar questões comentadas em objetivos de aprendizagem, curar notas simples/cloze e estudar com FSRS real. Aplicação pessoal para uso local ou no GitHub Codespaces, com banco SQLite persistente. Sem dados demonstrativos no acervo inicial.
-## Alternativa sem cobrança da API
+## Versão completa e modo manual sem API
 
-A pasta [static-site](static-site/) contém uma versão estática para GitHub Pages, sem chave da OpenAI e sem chamadas automáticas à API. Ela prepara um pedido para copiar ao ChatGPT; depois você cola a resposta JSON no app para importar e revisar os cartões. O acervo dessa versão fica no navegador local. Veja [static-site/README.md](static-site/README.md) para publicar e fazer backup.
+A aplicação principal é servida pelo Node.js em computador ou GitHub Codespaces. Ela inclui banco SQLite, curadoria, deduplicação, FSRS, estatísticas, backups e exportação Anki. O modo manual prepara pedidos para o ChatGPT; você cola a resposta JSON e faz uma avaliação independente antes de aprovar. Não exige chave nem chamadas pagas à API. A pasta [static-site](static-site/) é uma alternativa simplificada para GitHub Pages e não substitui a aplicação completa.
 
 ## Executar
 
@@ -13,13 +13,13 @@ Requer **Node.js 24 ou superior**, incluindo npm.
 npm ci
 ```
 
-Copie `.env.example` para `.env`, preencha `OPENAI_API_KEY` e ajuste `OPENAI_MODEL` para um modelo disponível na sua conta com Structured Outputs. Nunca coloque a chave no código, navegador ou Git.
+Copie `.env.example` para `.env`. Por padrão, `OPENAI_AUTOMATIC_ENABLED=false`, então nenhuma questão chama a API, mesmo que exista uma chave. Para usar a análise sem custo de API, mantenha esse padrão e siga o fluxo manual com ChatGPT. A análise automática é opcional: só a habilite com `OPENAI_AUTOMATIC_ENABLED=true` e uma chave `OPENAI_API_KEY` se você aceitar o consumo de créditos da API. Nunca coloque a chave no código, navegador ou Git.
 
 ```sh
 npm start
 ```
 
-Abra **http://127.0.0.1:3210**. O servidor escuta apenas em `127.0.0.1` no computador ou na porta privada do Codespaces. Sem chave, o envio persiste como pendente; abra a questão e use **Retomar análise** depois de configurar a chave e reiniciar. Não existem cartões falsos nem gerador de demonstração na aplicação.
+Abra **http://127.0.0.1:3210**. O servidor escuta apenas em `127.0.0.1` no computador ou na porta privada do Codespaces. Envie a questão; quando ficar pendente, abra-a, copie o pedido para o ChatGPT, cole o JSON e importe. Avalie cada rascunho separadamente com o pedido de revisão antes de aprová-lo. Nenhum envio chama a API por padrão.
 
 No Windows, para copiar a configuração: `Copy-Item .env.example .env`. Para encerrar: Ctrl+C. Para reiniciar, execute `npm start` novamente. Os dados continuam em `data/reuma.sqlite`; não apague essa pasta para atualizar o código.
 
@@ -34,6 +34,8 @@ Nesta entrega, as dependências já estão instaladas no projeto local. O ZIP co
 5. **Gerar e avaliar:** uma chamada redige, outra avalia os oito critérios. Há no máximo duas reescritas após a primeira tentativa; persistindo falhas, a nota vai para revisão manual. O gerador pode escolher pergunta simples quando a resposta não cabe em cloze.
 6. **Curar:** revise evidência, objetivo, termo oculto, alertas e semelhantes. Edite, converta, selecione outro termo, descarte com motivo, vincule ou aprove. Cartões com alertas não podem ser aprovados em lote. A aprovação individual com alertas exige justificativa explícita; sintaxe essencial inválida e evidência ausente não são liberadas por justificativa.
 7. **Estudar:** somente aprovados entram na fila. Revele a resposta, avalie e receba novo agendamento pela biblioteca. Desfazer preserva o evento auditável e o exclui das métricas.
+
+Sem cobrança automática, a análise inicial e a avaliação independente acontecem no ChatGPT por copiar e colar. A aplicação valida a estrutura e a evidência antes da curadoria; comparação semântica manual depende da qualidade da revisão e da confirmação humana.
 
 ## O que foi implementado
 
@@ -56,7 +58,7 @@ Tabelas: `questions`, `attempts`, `objectives`, `notes`, `cards`, `links`, `revi
 
 SQLite usa WAL, transações `BEGIN IMMEDIATE` e restrições únicas. Chamadas de IA não mantêm transações abertas. Um processo é responsável pelo acervo; múltiplas instâncias concorrentes e distribuição horizontal não são suportadas.
 
-O navegador não recebe chaves. Pedidos de mutação exigem token da sessão e origem local; Host é validado contra localhost, reduzindo risco de DNS rebinding. A interface usa escape de texto e Content Security Policy. Não há rastreamento externo, fontes remotas, telemetria nem scripts de terceiros.
+O navegador não recebe chaves. A API automática fica desligada por padrão e só usa créditos quando ativada explicitamente no servidor. No modo manual, o texto só é enviado ao ChatGPT quando você copia o pedido. Pedidos de mutação exigem token da sessão e origem local; Host é validado contra localhost, reduzindo risco de DNS rebinding. A interface usa escape de texto e Content Security Policy. Não há rastreamento externo, fontes remotas, telemetria nem scripts de terceiros.
 
 **Serviço de IA:** OpenAI, endpoint Chat Completions com `store:false`. O envio inclui material da questão e lotes relevantes de questões/objetivos do acervo para comparação completa. Consulte as condições da sua conta para tratamento pelo provedor. Remova identificadores de pacientes antes de colar. A aplicação não anonimiza conteúdo automaticamente e não pesquisa diretrizes na internet.
 
@@ -111,7 +113,7 @@ Veja [docs/QUALIDADE.md](docs/QUALIDADE.md) para separar testes determinísticos
 
 ## Limitações reais da entrega
 
-- A chave e o modelo da API foram reconhecidos, mas a geração real foi bloqueada por saldo pré-pago esgotado. Após adicionar créditos, reabra a questão pendente e retome a análise. A qualidade clínica e semântica precisa de avaliação com material real. Testes usam dados fictícios explicitamente identificados.
+- O modo manual evita chamadas pagas à API, mas não automatiza a análise dentro do aplicativo. O usuário copia os pedidos para o ChatGPT e precisa conferir a fonte e as avaliações antes de aprovar. A qualidade clínica e semântica requer avaliação com material real. Testes usam dados fictícios explicitamente identificados.
 - O acesso HTTP e a sintaxe foram verificados. A inspeção visual automatizada ficou bloqueada por falha do navegador integrado ao anexar a aba; não há teste de ponta a ponta por navegador nesta entrega.
 - Para a detecção exata ignorar comentários/gabaritos, use os marcadores de seção documentados. Textos livres sem separação dependem da comparação semântica e da confirmação humana. Pontuação, reordenação de alternativas ou OCR podem exigir confirmação.
 - A comparação semântica percorre todo o acervo em lotes, sem índice vetorial. Isso preserva cobertura mas aumenta custo/latência em acervos grandes. Uma falha deixa a análise pendente. Não existe garantia absoluta de deduplicação.
@@ -122,7 +124,7 @@ Veja [docs/QUALIDADE.md](docs/QUALIDADE.md) para separar testes determinísticos
 
 ## Repositório GitHub
 
-O projeto está preparado para o repositório privado `pedroassuncao02/ReumaRevisa`. Confira o modo de uso do Codespaces em [Abrir pelo GitHub Codespaces](#abrir-pelo-github-codespaces). A chave de IA deve ser configurada como segredo privado do Codespaces. A chave e o banco local ficam fora dos commits.
+O projeto está preparado para `pedroassuncao02/ReumaRevisa`. Confira o modo de uso do Codespaces em [Abrir pelo GitHub Codespaces](#abrir-pelo-github-codespaces). A chave de IA é opcional e fica fora dos commits. O banco local também não é publicado.
 
 ## Referências técnicas
 
@@ -139,13 +141,12 @@ O repositório inclui um ambiente Codespaces que instala dependências, inicia o
 
 1. No repositório GitHub, clique em **Code → Codespaces → Create codespace on main**. Se o Codespace já existir, abra-o em vez de criar outro.
 
-2. Na criação, escolha a chave `OPENAI_API_KEY` quando o GitHub oferecer a opção de configurar o segredo. Se precisar cadastrá-la antes, vá a **GitHub → foto do perfil → Settings → Secrets and variables → Codespaces → New secret**. Nome: `OPENAI_API_KEY`; valor: sua chave. Dê acesso apenas a este repositório. A chave fica nas configurações privadas da sua conta, nunca no repositório.
+2. Não precisa cadastrar chave para o modo manual. A análise automática da API fica desativada por padrão. Para cada questão pendente, use **Copiar pedido para o ChatGPT**, cole o pedido em uma conversa, copie somente o JSON da resposta e importe no aplicativo. Depois, faça a avaliação independente pedida em cada cartão. Isso não consome créditos da API; os limites do seu plano ChatGPT continuam valendo.
 
 3. Aguarde o primeiro preparo. O navegador deverá abrir o aplicativo. Se não abrir, no Codespace selecione a aba **Ports** e clique no endereço encaminhado na porta `3210`; mantenha a visibilidade `Private`.
 
 4. Ao voltar depois, reabra o Codespace pelo menu **Code → Codespaces**. Quando estiver parado, use **Resume**. Para parar e liberar a máquina, escolha **Stop codespace**.
 
 Codespaces executa o servidor enquanto o espaço está ativo. O plano do GitHub pode impor cotas ou custos ao uso de Codespaces; confira a cota na sua conta. O segredo é fornecido ao servidor pelo ambiente do Codespaces; a configuração local `.env` não é enviada ao GitHub.
-
 
 

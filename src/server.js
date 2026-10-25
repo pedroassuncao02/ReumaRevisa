@@ -30,6 +30,8 @@ export function makeApp({store,ai,dataDir=resolve(root,process.env.DATA_DIR||'da
     service.submit(body).then(result=>{job.status='done';job.result=result;s.update('jobs',job);}).catch(e=>{job.status='failed';job.error=e.message;s.update('jobs',job);});return send(job,202);
    }
    if(path.startsWith('/api/jobs/')&&req.method==='GET'){const j=s.get('jobs',path.split('/').pop());assert(j,'Processamento não encontrado.',404);return send(j);}
+   if(path==='/api/manual-import'&&req.method==='POST')return send(await service.manualImport(body.id,body.response));
+   if(path==='/api/manual-review'&&req.method==='POST')return send(service.manualReview(body.id,body.response));
    if(path==='/api/analyze'&&req.method==='POST')return send(await service.serialize(()=>service.analyze(body.id)));
    if(path==='/api/attempt'&&req.method==='POST')return send(service.attempt(body.id,body.outcome));
    if(path==='/api/edit'&&req.method==='POST')return send(await service.edit(body.id,body));
@@ -60,5 +62,4 @@ export function makeApp({store,ai,dataDir=resolve(root,process.env.DATA_DIR||'da
  return {handler,store:s,service};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){const app=makeApp();const port=Number(process.env.PORT||3210);const host=process.env.CODESPACES==='true'?'0.0.0.0':'127.0.0.1';createServer(app.handler).listen(port,host,()=>console.log(`Reuma Revisa disponível na porta ${port}`));}
-
 

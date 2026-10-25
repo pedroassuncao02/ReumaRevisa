@@ -14,7 +14,7 @@ export class Service {
   const q={id:id(),fingerprint:hash,raw:input.raw,...splitQuestion(input.raw),source:input.source||'',institution:input.institution||'',year:input.year||'',area:input.area||'Outros temas',tags:[],doubt:input.doubt||'',createdAt:now(),status:'pending',issues:[],verifiedAt:null};
   const result=this.s.tx(()=>{const dup=this.s.duplicate(hash);if(dup)return this.duplicate(dup);this.s.put('questions',q,{fingerprint:hash});if(input.outcome)this.attempt(q.id,input.outcome);return {question:q};});
   if(result.duplicate)return result;
-  if(!this.ai.enabled){q.issues=['IA não configurada; análise e deduplicação semântica pendentes.'];this.s.update('questions',q);return {question:q,pending:true};}
+  if(!this.ai.enabled){q.issues=['API automática desativada. Use o fluxo manual com ChatGPT para analisar esta questão sem cobrança da API.'];this.s.update('questions',q);return {question:q,pending:true};}
   return this.analyze(q.id);
  });}
  attempt(questionId,outcome){assert(this.s.get('questions',questionId),'Questão não encontrada.',404);assert(['secure','doubt','wrong','unanswered'].includes(outcome),'Resultado inválido.');return this.s.put('attempts',{id:id(),questionId,outcome,createdAt:now()},{question_id:questionId});}
@@ -39,6 +39,64 @@ export class Service {
   }
   q.status='ready';q.summary={objectives:output.objectives.length,created,covered,updates};this.s.update('questions',q);return {question:q};
  }catch(e){q.status='pending';q.issues=[e.message];this.s.update('questions',q);return {question:q,pending:true,error:e.message};}}
+
+ async manualImport(qid,response){return this.serialize(async()=>{
+  const q=this.s.get('questions',qid);assert(q,'Questão não encontrada.',404);
+  assert(q.status==='pending','Somente questões pendentes podem receber uma análise manual.');
+  assert(typeof response==='string'&&response.trim().length>0&&response.length<=300000,'Cole a resposta JSON completa do ChatGPT.');
+  let parsed;try{const clean=response.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');parsed=JSON.parse(clean);}catch{throw new Error('Não encontrei um JSON válido. Peça ao ChatGPT para retornar somente o objeto JSON indicado.');}
+  assert(parsed&&typeof parsed==='object'&&!Array.isArray(parsed),'A resposta deve ser um objeto JSON.');
+  assert(Array.isArray(parsed.candidates)&&parsed.candidates.length<=30,'O JSON deve conter uma lista "candidates" com até 30 propostas. Lista vazia é válida.');
+  assert(parsed.issues===undefined||(Array.isArray(parsed.issues)&&parsed.issues.length<=100&&parsed.issues.every(x=>typeof x==='string')),'A lista de pendências é inválida.');
+  const areas=this.s.meta('areas');
+  const prepared=parsed.candidates.map((candidate,index)=>{
+   assert(candidate&&candidate.objective&&candidate.note,'Cada proposta precisa conter objective e note.');
+   const objective={...candidate.objective,id:id(),questionId:qid,createdAt:now(),warnings:[]};
+   objective.warnings=validateObjective(objective,q.raw,areas);
+   const key=objectiveKey(objective),noteData=candidate.note;
+   const note={...noteData,id:id(),objectiveId:objective.id,objectiveKey:key,status:'draft',area:objective.area,tags:objective.tags,evidence:objective.evidence,source:q.source,createdAt:now(),updatedAt:now(),alerts:[],matches:[],evaluation:null,distinction:'',dedupComplete:false,manualImport:true,verifiedAt:null};
+   const validation=validateNote(note,objective,q.raw);
+   note.alerts=[...new Set([...(parsed.issues||[]).map(x=>String(x).slice(0,2000)),...validation,'Comparação semântica e avaliação independente pendentes. Use "Revisar com ChatGPT".'])];
+   return {objective,note,index};
+  });
+  return this.s.tx(()=>{
+   let created=0,covered=0;
+   for(const item of prepared){
+    const existing=this.s.all('notes').find(n=>n.objectiveKey===item.note.objectiveKey);
+    item.objective.decision=existing?'same':'manual_pending';
+    if(existing)item.objective.existingNoteId=existing.id;
+    this.s.put('objectives',item.objective,{question_id:qid});
+    if(existing){this.s.link(qid,existing.id,item.objective.evidence);covered++;continue;}
+    this.s.put('notes',item.note,{objective_id:item.objective.id,objective_key:item.note.objectiveKey});
+    this.s.link(qid,item.note.id,item.objective.evidence);created++;
+   }
+   q.status='ready';q.analysisMode='manual-chatgpt';q.issues=(parsed.issues||[]).map(x=>String(x).slice(0,2000));
+   q.summary={objectives:prepared.length,created,covered,updates:0};q.manualSummary=String(parsed.summary||'').slice(0,2000);this.s.update('questions',q);
+   return {question:q,created,covered};
+  });
+ });}
+ manualReview(nid,response){
+  const n=this.s.get('notes',nid);assert(n&&n.status==='draft','Somente rascunhos podem receber avaliação manual.',404);
+  assert(n.manualImport,'Este cartão não foi importado pelo fluxo manual.');
+  assert(typeof response==='string'&&response.trim().length>0&&response.length<=100000,'Cole o JSON da avaliação independente.');
+  let review;try{const clean=response.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');review=JSON.parse(clean);}catch{throw new Error('Não encontrei um JSON válido para a avaliação.');}
+  assert(review&&typeof review==='object'&&!Array.isArray(review),'A avaliação deve ser um objeto JSON.');
+  assert(['distinct','same','improve','partial','conflict','uncertain'].includes(review.decision),'Decisão de avaliação inválida.');
+  assert(review.checks&&typeof review.checks==='object'&&checks.every(k=>typeof review.checks[k]==='boolean'),'A avaliação deve responder aos oito critérios com true ou false.');
+  assert(Array.isArray(review.matches)&&review.matches.length<=100,'Lista de correspondências inválida.');
+  assert(review.matches.every(m=>m&&typeof m.id==='string'&&this.s.get('notes',m.id)&&m.id!==nid&&['same','improve','partial','conflict','uncertain'].includes(m.decision)&&typeof m.distinction==='string'),'Correspondência inválida ou fora do acervo.');
+  assert(Array.isArray(review.alternatives)&&review.alternatives.every(x=>typeof x==='string'),'Lista de alternativas inválida.');
+  assert(Array.isArray(review.alerts)&&review.alerts.every(x=>typeof x==='string'),'Lista de alertas inválida.');
+  assert(typeof review.reason==='string'&&typeof (review.distinction||'')==='string','Justificativa inválida.');
+  const o=this.s.get('objectives',n.objectiveId),q=this.s.get('questions',o.questionId),failed=checks.filter(k=>!review.checks[k]);
+  const unresolved=review.matches.some(m=>['same','improve','conflict','uncertain'].includes(m.decision)||(m.decision==='partial'&&!m.distinction.trim()));
+  const complete=review.decision==='distinct'&&!failed.length&&!unresolved&&(!review.matches.some(m=>m.decision==='partial')||String(review.distinction||'').trim().length>0);
+  const alerts=[...validateNote(n,o,q.raw),...q.issues,...review.alerts.map(x=>String(x).slice(0,1000)),...failed.map(k=>'Avaliação independente pendente: '+k)];
+  if(!complete){alerts.push(review.decision==='same'?'A avaliação encontrou conhecimento já coberto; vincule a um cartão existente.':'A avaliação não confirmou que este cartão é distinto e adequado. Revise e tente novamente.');}
+  else alerts.push('Revise o conteúdo e a fonte antes de aprovar individualmente.');
+  n.matches=review.matches;n.evaluation={checks:review.checks,alternatives:review.alternatives,alerts:review.alerts,reason:review.reason};n.distinction=String(review.distinction||'').slice(0,2000);n.dedupComplete=complete;n.manualReviewedAt=now();n.alerts=[...new Set(alerts)];
+  return this.s.update('notes',n);
+ }
  acervo(){return this.s.all('notes').map(n=>({id:n.id,status:n.status,objective:this.s.get('objectives',n.objectiveId),front:n.front,back:n.back,explanation:n.explanation,discardReason:n.discardReason}));}
  version(n,reason){this.s.put('versions',{id:id(),noteId:n.id,snapshot:structuredClone(n),reason,createdAt:now()},{note_id:n.id});}
  async edit(nid,input){return this.serialize(async()=>{let n=this.s.get('notes',nid);assert(n,'Cartão não encontrado.',404);const o=this.s.get('objectives',n.objectiveId),q=this.s.get('questions',o.questionId);this.version(n,'Edição');n={...n,...Object.fromEntries(['front','back','explanation','type','area','tags','distinction'].filter(k=>k in input).map(k=>[k,input[k]])),status:'draft',updatedAt:now()};assert(this.s.meta('areas').includes(n.area)&&Array.isArray(n.tags),'Área ou etiquetas inválidas.');n.alerts=validateNote(n,o,q.raw);n.dedupComplete=false;

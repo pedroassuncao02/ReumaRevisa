@@ -3,7 +3,9 @@
   "image": "mcr.microsoft.com/devcontainers/javascript-node:24-bookworm",
   "postCreateCommand": "npm ci",
   "postStartCommand": "npm run codespaces:start",
-  "forwardPorts": [3210],
+  "forwardPorts": [
+    3210
+  ],
   "portsAttributes": {
     "3210": {
       "label": "Reuma Revisa",
@@ -11,16 +13,11 @@
       "visibility": "private"
     }
   },
-  "secrets": {
-    "OPENAI_API_KEY": {
-      "description": "Chave da API OpenAI usada pelo servidor para analisar questões.",
-      "documentationUrl": "https://platform.openai.com/api-keys"
-    }
-  },
   "customizations": {
     "codespaces": {
-      "openFiles": ["README.md"]
+      "openFiles": [
+        "README.md"
+      ]
     }
   }
 }
-
