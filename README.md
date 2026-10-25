@@ -1,6 +1,9 @@
 # Reuma Revisa
 
 Aplicação web em português para transformar questões comentadas em objetivos de aprendizagem, curar notas simples/cloze e estudar com FSRS real. Aplicação pessoal para uso local ou no GitHub Codespaces, com banco SQLite persistente. Sem dados demonstrativos no acervo inicial.
+## Alternativa sem cobrança da API
+
+A pasta [static-site](static-site/) contém uma versão estática para GitHub Pages, sem chave da OpenAI e sem chamadas automáticas à API. Ela prepara um pedido para copiar ao ChatGPT; depois você cola a resposta JSON no app para importar e revisar os cartões. O acervo dessa versão fica no navegador local. Veja [static-site/README.md](static-site/README.md) para publicar e fazer backup.
 
 ## Executar
 
