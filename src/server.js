@@ -34,6 +34,7 @@ export function makeApp({store,ai,dataDir=resolve(root,process.env.DATA_DIR||'da
    if(path==='/api/manual-note'&&req.method==='POST')return send(await service.manualNote(body.id,body.candidateId,body.response));
    if(path==='/api/manual-review'&&req.method==='POST')return send(service.manualReview(body.id,body.response));
    if(path==='/api/analyze'&&req.method==='POST')return send(await service.serialize(()=>service.analyze(body.id)));
+   if(path==='/api/question-delete'&&req.method==='POST')return send(service.deleteQuestion(body.id));
    if(path==='/api/attempt'&&req.method==='POST')return send(service.attempt(body.id,body.outcome));
    if(path==='/api/edit'&&req.method==='POST')return send(await service.edit(body.id,body));
    if(path==='/api/approve'&&req.method==='POST')return send(service.approve(body.ids,body.resolution));

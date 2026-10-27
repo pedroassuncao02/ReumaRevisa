@@ -18,6 +18,18 @@ export class Service {
   return this.analyze(q.id);
  });}
  attempt(questionId,outcome){assert(this.s.get('questions',questionId),'Questão não encontrada.',404);assert(['secure','doubt','wrong','unanswered'].includes(outcome),'Resultado inválido.');return this.s.put('attempts',{id:id(),questionId,outcome,createdAt:now()},{question_id:questionId});}
+ async deleteQuestion(qid){return this.s.tx(()=>{
+  const q=this.s.get('questions',qid);assert(q,'Questão não encontrada.',404);
+  const links=this.s.all('links').filter(x=>x.questionId===qid);
+  const objectiveIds=new Set(this.s.all('objectives').filter(x=>x.questionId===qid).map(x=>x.id));
+  const linkedNotes=this.s.all('notes').filter(n=>objectiveIds.has(n.objectiveId));
+  assert(!links.length&&!linkedNotes.length,'Esta questão tem cartões vinculados. Para preservar evidências e rastreabilidade, resolva os vínculos antes de excluir a questão.');
+  for(const a of this.s.all('attempts').filter(x=>x.questionId===qid))this.s.db.prepare('DELETE FROM attempts WHERE id=?').run(a.id);
+  for(const o of this.s.all('objectives').filter(x=>x.questionId===qid))this.s.db.prepare('DELETE FROM objectives WHERE id=?').run(o.id);
+  for(const j of this.s.all('jobs').filter(x=>x.result?.question?.id===qid))this.s.db.prepare('DELETE FROM jobs WHERE id=?').run(j.id);
+  this.s.db.prepare('DELETE FROM questions WHERE id=?').run(qid);
+  return {ok:true};
+ });}
  async analyze(qid){const q=this.s.get('questions',qid);assert(q,'Questão não encontrada.',404);q.status='processing';this.s.update('questions',q);try{
   const output=await this.ai.extract(q.raw,q.doubt,this.s.meta('areas'));if(q.area==='Outros temas'&&this.s.meta('areas').includes(output.mainArea))q.area=output.mainArea;q.tags=output.tags;q.issues=output.issues;
   let created=0,covered=0,updates=0;
